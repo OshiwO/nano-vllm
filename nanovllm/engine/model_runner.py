@@ -127,14 +127,14 @@ class ModelRunner:
         return block_tables
 
     def prepare_prefill(self, seqs: list[Sequence]):
-        input_ids = []
-        positions = []
-        cu_seqlens_q = [0]
-        cu_seqlens_k = [0]
+        input_ids = []      # 将不同的 Sequence 压平为 1D
+        positions = []      # 这些 token 在原始 Sequence 中位于哪里？
+        cu_seqlens_q = [0]  # 压平后的 query 分别属于哪个请求？
+        cu_seqlens_k = [0]  # 每个请求总共有多少可见的 key？
         max_seqlen_q = 0
         max_seqlen_k = 0
-        slot_mapping = []
-        block_tables = None
+        slot_mapping = []   # 当前 token 产生的 K/V 应写入哪个物理 KV slot
+        block_tables = None # 逻辑 block 到物理 KV block ID 的映射，供 Attention 读取历史 K/V
         for seq in seqs:
             start = seq.num_cached_tokens
             seqlen_q = seq.num_scheduled_tokens
@@ -213,7 +213,7 @@ class ModelRunner:
 
     def run(self, seqs: list[Sequence], is_prefill: bool) -> list[int]:
         input_ids, positions = self.prepare_prefill(seqs) if is_prefill else self.prepare_decode(seqs)
-        temperatures = self.prepare_sample(seqs) if self.rank == 0 else None
+        temperatures = self.prepare_sample(seqs) if self.rank == 0 else None    # 只有 TP rank 0 准备采样温度
         logits = self.run_model(input_ids, positions, is_prefill)
         token_ids = self.sampler(logits, temperatures).tolist() if self.rank == 0 else None
         reset_context()

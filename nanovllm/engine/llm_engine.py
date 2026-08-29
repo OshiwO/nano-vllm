@@ -42,16 +42,17 @@ class LLMEngine:
 
     def add_request(self, prompt: str | list[int], sampling_params: SamplingParams):
         if isinstance(prompt, str):
-            prompt = self.tokenizer.encode(prompt)
+            prompt = self.tokenizer.encode(prompt)              # 将 prompt 转化为 token_ids: list[int]
         seq = Sequence(prompt, sampling_params)
         self.scheduler.add(seq)
 
     def step(self):
-        seqs, is_prefill = self.scheduler.schedule()
+        seqs, is_prefill = self.scheduler.schedule()    # 从 Scheduler 得到要执行的 seqs，并判断本轮是 P 还是 D
         # 这个版本中prefill 与 decode 是互斥的，所以才有 "if is_prefill else"的条件
         num_tokens = sum(seq.num_scheduled_tokens for seq in seqs) if is_prefill else -len(seqs)
-        token_ids = self.model_runner.call("run", seqs, is_prefill)
-        self.scheduler.postprocess(seqs, token_ids, is_prefill)
+        # 这里的 num_tokens 为正表示 P，为负表示 D
+        token_ids = self.model_runner.call("run", seqs, is_prefill)  # 执行本轮模型 forward 和采样
+        self.scheduler.postprocess(seqs, token_ids, is_prefill)      # 更新 Sequence 状态并判断是否结束
         outputs = [(seq.seq_id, seq.completion_token_ids) for seq in seqs if seq.is_finished]
         return outputs, num_tokens
 

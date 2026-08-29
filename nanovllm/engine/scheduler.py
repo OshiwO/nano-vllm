@@ -78,14 +78,18 @@ class Scheduler:
         self.block_manager.deallocate(seq)
         self.waiting.appendleft(seq)
 
+    # “结果回收与状态更新”模块
     def postprocess(self, seqs: list[Sequence], token_ids: list[int], is_prefill: bool):
         for seq, token_id in zip(seqs, token_ids):
-            self.block_manager.hash_blocks(seq)
+            self.block_manager.hash_blocks(seq)     # 对新完成的 block 计算 hash，并登记到 Prefix Cache
             seq.num_cached_tokens += seq.num_scheduled_tokens
             seq.num_scheduled_tokens = 0
+            # Prefill 阶段若只处理了部分输入，说明当前是 chunked prefill。
+            # 每个 chunk 的 run 都会采样一次，但中间 chunk 的预测会在这里被丢弃。
             if is_prefill and seq.num_cached_tokens < seq.num_tokens:
                 continue
-            seq.append_token(token_id)
+            seq.append_token(token_id)              # 将采样得到的 token ID 加入 Sequence
+            # 判断是否遇到结束符号或达到最大输出长度
             if (not seq.ignore_eos and token_id == self.eos) or seq.num_completion_tokens == seq.max_tokens:
                 seq.status = SequenceStatus.FINISHED
                 self.block_manager.deallocate(seq)
