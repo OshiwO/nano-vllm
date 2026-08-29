@@ -48,6 +48,7 @@ class LLMEngine:
 
     def step(self):
         seqs, is_prefill = self.scheduler.schedule()
+        # 这个版本中prefill 与 decode 是互斥的，所以才有 "if is_prefill else"的条件
         num_tokens = sum(seq.num_scheduled_tokens for seq in seqs) if is_prefill else -len(seqs)
         token_ids = self.model_runner.call("run", seqs, is_prefill)
         self.scheduler.postprocess(seqs, token_ids, is_prefill)
@@ -65,14 +66,14 @@ class LLMEngine:
     ) -> list[str]:
         pbar = tqdm(total=len(prompts), desc="Generating", dynamic_ncols=True, disable=not use_tqdm)
         if not isinstance(sampling_params, list):
-            sampling_params = [sampling_params] * len(prompts)
-        for prompt, sp in zip(prompts, sampling_params):
-            self.add_request(prompt, sp)
+            sampling_params = [sampling_params] * len(prompts)          # 将sp 为多个 prompts 广播
+        for prompt, sp in zip(prompts, sampling_params):                # prompt 是输入文本 sp 为 采样参数
+            self.add_request(prompt, sp)                                # 这里将 prompt 加入scheduler
         outputs = {}
         prefill_throughput = decode_throughput = 0.
-        while not self.is_finished():
+        while not self.is_finished():                                   # 确定scheduler 已经完成
             t = perf_counter()
-            output, num_tokens = self.step()
+            output, num_tokens = self.step()                            # 开始运行
             if num_tokens > 0:
                 prefill_throughput = num_tokens / (perf_counter() - t)
             else:
