@@ -57,15 +57,17 @@ class BlockManager:
 
     def can_allocate(self, seq: Sequence) -> int:
         h = -1
-        num_cached_blocks = 0
+        num_cached_blocks = 0               # 连续命中的前缀 block 数量
         num_new_blocks = seq.num_blocks
         for i in range(seq.num_blocks - 1):
             token_ids = seq.block(i)
             h = self.compute_hash(token_ids, h)
             block_id = self.hash_to_block_id.get(h, -1)
+            # 未命中或 token 内容不一致时，停止继续匹配前缀
             if block_id == -1 or self.blocks[block_id].token_ids != token_ids:
                 break
             num_cached_blocks += 1
+            # 判断这个block是否正在被使用
             if block_id in self.used_block_ids:
                 num_new_blocks -= 1
         if len(self.free_block_ids) < num_new_blocks:
@@ -78,18 +80,18 @@ class BlockManager:
         for i in range(num_cached_blocks):
             token_ids = seq.block(i)
             h = self.compute_hash(token_ids, h)
-            block_id = self.hash_to_block_id[h]
+            block_id = self.hash_to_block_id[h]     # 根据 hash 找到可复用的物理 block ID
             block = self.blocks[block_id]
             if block_id in self.used_block_ids:
-                block.ref_count += 1
+                block.ref_count += 1                # 使用block 的引用count + 1
             else:
-                block.ref_count = 1
+                block.ref_count = 1                 # 对于未使用的block 计数 0 -> 1
                 self.free_block_ids.remove(block_id)
                 self.used_block_ids.add(block_id)
-            seq.block_table.append(block_id)
-        for i in range(num_cached_blocks, seq.num_blocks):
+            seq.block_table.append(block_id)        # 把命中的 Prefix Cache block 加入当前页表
+        for i in range(num_cached_blocks, seq.num_blocks): # 为未命中的 prompt 后缀分配新 block
             seq.block_table.append(self._allocate_block())
-        seq.num_cached_tokens = num_cached_blocks * self.block_size
+        seq.num_cached_tokens = num_cached_blocks * self.block_size # 设置已有有效 KV 的 token 数量
 
     def deallocate(self, seq: Sequence):
         for block_id in reversed(seq.block_table):

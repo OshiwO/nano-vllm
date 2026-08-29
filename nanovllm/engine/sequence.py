@@ -22,7 +22,7 @@ class Sequence:
         self.last_token = token_ids[-1]
         self.num_tokens = len(self.token_ids)
         self.num_prompt_tokens = len(token_ids)
-        self.num_cached_tokens = 0
+        self.num_cached_tokens = 0                  # kvcache已经处理的token数量
         self.num_scheduled_tokens = 0
         self.is_prefill = True
         self.block_table = []

@@ -64,7 +64,7 @@ class Scheduler:
                     self.preempt(seq)
                     break
             else:
-                seq.num_scheduled_tokens = 1
+                seq.num_scheduled_tokens = 1                # Decode 时每个请求本轮只计算一个 token
                 seq.is_prefill = False
                 self.block_manager.may_append(seq)
                 scheduled_seqs.append(seq)

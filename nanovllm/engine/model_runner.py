@@ -121,6 +121,7 @@ class ModelRunner:
                 layer_id += 1
 
     def prepare_block_tables(self, seqs: list[Sequence]):
+        # 得到最长block -> padding 获得整齐的数组 -> 转换为tensor
         max_len = max(len(seq.block_table) for seq in seqs)
         block_tables = [seq.block_table + [-1] * (max_len - len(seq.block_table)) for seq in seqs]
         block_tables = torch.tensor(block_tables, dtype=torch.int32, pin_memory=True).cuda(non_blocking=True)
@@ -131,7 +132,7 @@ class ModelRunner:
         positions = []      # 这些 token 在原始 Sequence 中位于哪里？
         cu_seqlens_q = [0]  # 压平后的 query 分别属于哪个请求？
         cu_seqlens_k = [0]  # 每个请求总共有多少可见的 key？
-        max_seqlen_q = 0
+        max_seqlen_q = 0    # 当前批次中最长的 query/chunk 长度
         max_seqlen_k = 0
         slot_mapping = []   # 当前 token 产生的 K/V 应写入哪个物理 KV slot
         block_tables = None # 逻辑 block 到物理 KV block ID 的映射，供 Attention 读取历史 K/V
@@ -150,7 +151,7 @@ class ModelRunner:
                 continue
             start_block = start // self.block_size
             end_block = (end + self.block_size - 1) // self.block_size
-            for i in range(start_block, end_block):
+            for i in range(start_block, end_block):                         # 将逻辑 block 映射到物理 KV slot
                 slot_start = seq.block_table[i] * self.block_size
                 if i == start_block:
                     slot_start += start % self.block_size
@@ -170,10 +171,10 @@ class ModelRunner:
         return input_ids, positions
 
     def prepare_decode(self, seqs: list[Sequence]):
-        input_ids = []
-        positions = []
-        slot_mapping = []
-        context_lens = []
+        input_ids = []                  # 对应的最后一个token的信息
+        positions = []                  # 标定“绝对位置”
+        slot_mapping = []               # 当前 K/V 应写入的物理 KV slot
+        context_lens = []               # 完整序列长度
         for seq in seqs:
             input_ids.append(seq.last_token)
             positions.append(len(seq) - 1)
